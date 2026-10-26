@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>文件夹差异对比工具 · 纯本地运行</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<!-- ============================== 工具栏 ============================== -->
+<header class="toolbar">
+  <div class="tb-line">
+    <h1 class="brand">📁 文件夹差异对比<span class="tag-local">纯本地 · 文件不出本机</span></h1>
+    <span class="grow"></span>
+    <label class="switch" title="开启后：点击任一侧的共有文件，另一侧会同步选中并滚动定位，下方同时展开双栏对比；关闭后只打开你点击的那一侧。">
+      <input type="checkbox" id="syncToggle" checked />
+      <span class="track"><span class="knob"></span></span>
+      <span class="switch-label">同步联动</span>
+    </label>
+    <label class="switch" title="开启后：任一侧滚动（滚轮 / 拖动滑块 / 滚动条）时，另一侧会跟随滚动。两侧行数不同（存在仅单侧文件）时按路径锚点对齐，不会因行号错位。">
+      <input type="checkbox" id="scrollSyncToggle" checked />
+      <span class="track"><span class="knob"></span></span>
+      <span class="switch-label">同步滚动</span>
+    </label>
+    <button class="btn sm" id="btnSettings">忽略规则 / 性能</button>
+    <button class="btn sm" id="btnRecompare" title="按当前配置重新扫描并比对">重新对比</button>
+    <button class="btn sm ghost text-danger" id="btnClear">清空</button>
+  </div>
+
+  <div class="tb-line">
+    <input class="search" id="search" type="search" placeholder="搜索路径或文件名，如 src/main 或 .java" />
+    <div class="tb-line" style="gap:6px" id="filters">
+      <button class="chip active" data-status="onlyA">仅A有</button>
+      <button class="chip active" data-status="onlyB">仅B有</button>
+      <button class="chip active" data-status="modified">内容不同</button>
+      <button class="chip active" data-status="same">相同</button>
+      <button class="chip" id="chipOnlyDiff">只看差异</button>
+    </div>
+    <span class="grow"></span>
+    <button class="btn sm" id="btnExpandDiff" title="只展开包含差异的目录">展开到差异</button>
+    <button class="btn sm" id="btnExpandAll">全部展开</button>
+    <button class="btn sm" id="btnCollapseAll">全部折叠</button>
+  </div>
+
+  <div class="tb-line stats" id="stats">
+    <span class="note">尚未导入文件夹：左侧 A、右侧 B，可点击按钮或直接把文件夹拖进来。</span>
+  </div>
+
+  <div class="tb-line legend-line">
+    <span><i class="l-mod"></i>内容不同</span>
+    <span><i class="l-a"></i>仅 A 有</span>
+    <span><i class="l-b"></i>仅 B 有</span>
+    <span><i class="l-same"></i>两边相同</span>
+    <span>名称后带 ≈ 表示文件过大、只按体积判断而未校验内容</span>
+  </div>
+
+  <div class="progress indet" id="progress" hidden>
+    <div class="bar"><i id="progressBar"></i></div>
+    <span id="progressText">准备中…</span>
+    <button class="btn sm ghost" id="btnCancel">取消</button>
+  </div>
+</header>
+
+<!-- ============================== 主区：左右分栏 ============================== -->
+<main id="main">
+  <section class="pane pane-a" id="paneA" data-side="A">
+    <div class="pane-head">
+      <span class="side-tag a">A</span>
+      <button class="btn sm" id="pickA">选择文件夹</button>
+      <span class="root-name empty" id="rootNameA">未导入</span>
+      <span class="grow"></span>
+      <span class="pane-count" id="countA"></span>
+      <button class="btn sm ghost" id="clrA" title="清除这一侧">✕</button>
+    </div>
+    <div class="tree-scroll" id="scrollA"><div class="tree-sizer" id="sizerA"><div class="tree-rows" id="rowsA"></div></div></div>
+    <div class="empty" id="emptyA">
+      <div>
+        <div class="ico">📂</div>
+        <p>把文件夹拖到这里，或点击左上角「选择文件夹」</p>
+        <p class="hint">子目录会一并递归导入 · 所有计算都在浏览器里完成</p>
+      </div>
+    </div>
+    <input type="file" id="inputA" webkitdirectory directory multiple hidden />
+  </section>
+
+  <div class="vsplit" id="vsplit" title="拖动调整宽度"></div>
+
+  <section class="pane pane-b" id="paneB" data-side="B">
+    <div class="pane-head">
+      <span class="side-tag b">B</span>
+      <button class="btn sm" id="pickB">选择文件夹</button>
+      <span class="root-name empty" id="rootNameB">未导入</span>
+      <span class="grow"></span>
+      <span class="pane-count" id="countB"></span>
+      <button class="btn sm ghost" id="clrB" title="清除这一侧">✕</button>
+    </div>
+    <div class="tree-scroll" id="scrollB"><div class="tree-sizer" id="sizerB"><div class="tree-rows" id="rowsB"></div></div></div>
+    <div class="empty" id="emptyB">
+      <div>
+        <div class="ico">📂</div>
+        <p>把文件夹拖到这里，或点击左上角「选择文件夹」</p>
+        <p class="hint">与 A 相同的相对路径会自动配对比较</p>
+      </div>
+    </div>
+    <input type="file" id="inputB" webkitdirectory directory multiple hidden />
+  </section>
+</main>
+
+<!-- ============================== 底部预览抽屉 ============================== -->
+<div class="hsplit" id="hsplit" title="拖动调整高度 / 双击收起"></div>
+
+<section class="drawer" id="drawer">
+  <div class="drawer-head">
+    <span class="drawer-title" id="drawerTitle">未选择文件</span>
+    <span class="drawer-sub" id="drawerSub"></span>
+    <span class="grow"></span>
+    <button class="btn sm ghost" id="btnDocView" hidden title="docx 专用：文档排版视图 ⇄ 逐行代码视图">逐行视图</button>
+    <button class="btn sm ghost" id="btnViewMode" hidden>统一视图</button>
+    <button class="btn sm" id="btnPrevDiff" title="上一个差异文件">↑ 上一个</button>
+    <button class="btn sm" id="btnNextDiff" title="下一个差异文件">↓ 下一个差异</button>
+    <button class="btn sm ghost" id="btnCloseDrawer">✕ 收起</button>
+  </div>
+  <div class="drawer-body" id="drawerBody">
+    <div class="center-tip">点击任意文件查看内容 / 差异。<br />点目录可展开折叠；橙 / 玫红 / 红色行 = 差异项。</div>
+  </div>
+</section>
+
+<!-- ============================== 设置弹层 ============================== -->
+<div class="modal" id="settingsModal" hidden>
+  <div class="modal-card">
+    <h3>忽略规则 / 性能设置</h3>
+
+    <div class="field">
+      <label for="ignoreInput">忽略规则（换行或逗号分隔，支持 * 和 **，! 开头表示反选）</label>
+      <textarea id="ignoreInput" spellcheck="false"></textarea>
+      <div class="desc">不带斜杠的规则按「路径中任意一级目录名 / 文件名」匹配；带斜杠的规则按路径片段匹配，不限所处层级。<br />
+        例：<code>node_modules</code> · <code>*.log</code> · <code>build/**</code> · <code>!src/main/res</code></div>
+      <div style="margin-top:6px"><button class="btn sm ghost" id="btnResetIgnore">恢复默认规则</button></div>
+    </div>
+
+    <div class="grid2">
+      <div class="field">
+        <label for="inpMaxHash">参与内容哈希的最大单文件体积（MB）</label>
+        <input type="number" id="inpMaxHash" min="0" step="1" />
+        <div class="desc">超过此大小的文件不读内容，只按体积判断（判为相同，标记 ≈）</div>
+      </div>
+      <div class="field">
+        <label for="inpMaxPreview">预览的最大单文件体积（MB）</label>
+        <input type="number" id="inpMaxPreview" min="1" step="1" />
+        <div class="desc">更大的文件只显示元信息，避免内存暴涨</div>
+      </div>
+      <div class="field">
+        <label for="inpMaxLines">参与逐行对比的最大行数</label>
+        <input type="number" id="inpMaxLines" min="100" step="100" />
+        <div class="desc">超出后不做行级 diff，直接左右原样展示</div>
+      </div>
+      <div class="field">
+        <label for="inpMaxFiles">单侧文件数量上限</label>
+        <input type="number" id="inpMaxFiles" min="1000" step="1000" />
+        <div class="desc">超过部分会被跳过并在统计里提示</div>
+      </div>
+    </div>
+
+    <div class="field">
+      <label class="switch" style="display:inline-flex">
+        <input type="checkbox" id="inpIgnoreWS" />
+        <span class="track"><span class="knob"></span></span>
+        <span class="switch-label">逐行对比时忽略行尾空白差异</span>
+      </label>
+    </div>
+
+    <div class="modal-foot">
+      <button class="btn ghost" id="btnCloseSettings">取消</button>
+      <button class="btn primary" id="btnSaveSettings">保存并重新对比</button>
+    </div>
+  </div>
+</div>
+
+<script src="core.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
