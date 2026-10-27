@@ -117,6 +117,45 @@
     await sleep(300);
     ok('仅A文件可单独预览', /hello A/.test(document.getElementById('drawerBody').textContent));
 
+    /* --- 3b) 分栏归属：左栏恒为 A、右栏恒为 B，与「点的是哪一侧」无关 --- */
+    // 曾经的实现把「被点击的一侧」固定当左栏，导致点 B 侧列表时两侧内容整体调换，
+    // 连红（A 删除）/ 绿（B 新增）的语义都跟着反过来。这里把该行为锁死。
+    document.getElementById('syncToggle').checked = true;
+    await FD.openEntry('A', 'dir/modified.txt');
+    await sleep(300);
+    var lFromA = document.getElementById('diffLeft').textContent;
+    var rFromA = document.getElementById('diffRight').textContent;
+    await FD.openEntry('B', 'dir/modified.txt');
+    await sleep(300);
+    var lFromB = document.getElementById('diffLeft').textContent;
+    var rFromB = document.getElementById('diffRight').textContent;
+
+    ok('点 B 侧：左栏内容与点 A 侧时完全一致', lFromA === lFromB, JSON.stringify(lFromB.slice(0, 60)));
+    ok('点 B 侧：右栏内容与点 A 侧时完全一致', rFromA === rFromB, JSON.stringify(rFromB.slice(0, 60)));
+    ok('左栏 = A 版本（beta）', /beta/.test(lFromB) && !/BETA-CHANGED/.test(lFromB));
+    ok('右栏 = B 版本（BETA-CHANGED）', /BETA-CHANGED/.test(rFromB) && !/beta/.test(rFromB));
+    ok('点 B 侧：删除行仍标在左栏（红）',
+       document.querySelectorAll('#diffLeft .dl.del').length >= 1,
+       'n=' + document.querySelectorAll('#diffLeft .dl.del').length);
+    ok('点 B 侧：左栏不出现绿色新增', document.querySelectorAll('#diffLeft .dl.ins').length === 0);
+    ok('点 B 侧：右栏不出现红色删除', document.querySelectorAll('#diffRight .dl.del').length === 0);
+    ok('点 B 侧：另一侧仍被联动选中', FD.panes.A.selected === 'dir/modified.txt', String(FD.panes.A.selected));
+
+    // 关联动时，点哪一侧就只展示哪一侧
+    document.getElementById('syncToggle').checked = false;
+    await FD.openEntry('B', 'dir/modified.txt');
+    await sleep(300);
+    ok('联动关/点 B 侧：只展示 B 版本',
+       !document.getElementById('diffRight') &&
+       /BETA-CHANGED/.test(document.getElementById('drawerBody').textContent) &&
+       !/beta/.test(document.getElementById('drawerBody').textContent));
+    await FD.openEntry('A', 'dir/modified.txt');
+    await sleep(300);
+    ok('联动关/点 A 侧：只展示 A 版本',
+       !document.getElementById('diffRight') &&
+       /beta/.test(document.getElementById('drawerBody').textContent) &&
+       !/BETA-CHANGED/.test(document.getElementById('drawerBody').textContent));
+
     /* --- 4) 二进制 -> 只显示元信息 --- */
     FD.setRaw('A', [{
       relPath: 'rootC/logo.png',
@@ -188,6 +227,14 @@
     var modRow = cdel && cdel.closest('.docrow');
     ok('docx 文档视图：A 侧单元格不含 B 的新增字',
        !!modRow && !/李四/.test(modRow.children[0].textContent) && !/张三/.test(modRow.children[1].textContent));
+    // 从 B 侧点开同一个 docx，左右单元格必须与从 A 侧点开时完全一致
+    await FD.openEntry('B', 'tpl/合同模板.docx');
+    await sleep(300);
+    var modRowB = document.querySelector('.docwrap .cdel');
+    modRowB = modRowB && modRowB.closest('.docrow');
+    ok('docx 从 B 侧点开：左格仍是 A（张三）、右格仍是 B（李四）',
+       !!modRowB && /张三/.test(modRowB.children[0].textContent) && /李四/.test(modRowB.children[1].textContent),
+       modRowB ? modRowB.textContent : 'no row');
     // Redline 统一视图：删除与新增同段内联
     await FD.setViewMode('unified');
     await sleep(250);

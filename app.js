@@ -707,17 +707,22 @@
     els.drawerSub.textContent = sync && shownOnOther ? 'A / B 双栏联动' : (key === 'A' ? '仅 A 侧' : '仅 B 侧');
     els.drawerBody.innerHTML = '<div class="center-tip">读取中…</div>';
 
-    var ea = p.map.get(path) || null;
-    var eb = sync ? (other.map.get(path) || null) : null;
+    // 分栏只认文件「属于哪一侧」，不认「点的是哪一侧」：
+    // 左栏恒为 A 侧内容、右栏恒为 B 侧内容。否则点 B 侧列表时两侧会被整体调换，
+    // 连 diff 的红（A 删除）/ 绿（B 新增）语义也会跟着反过来。
+    var ea = panes.A.map.get(path) || null;
+    var eb = panes.B.map.get(path) || null;
+    if (!sync) { if (key === 'A') eb = null; else ea = null; }   // 关联动：只展示被点击的一侧
     try {
       var ia = ea ? await inspect(ea) : null;
       var ib = eb ? await inspect(eb) : null;
-      if (ia) ia.side = key;
-      if (ib) ib.side = key === 'A' ? 'B' : 'A';
+      if (ia) ia.side = 'A';
+      if (ib) ib.side = 'B';
       if (seq !== renderSeq) return;
-      if (ia && !ib) await renderSingle(key, ia, seq);
-      else if (!ia && ib) await renderSingle(ib.side, ib, seq);
-      else await renderPair(ia, ib, seq);
+      if (ia && ib) await renderPair(ia, ib, seq);
+      else if (ia) await renderSingle('A', ia, seq);
+      else if (ib) await renderSingle('B', ib, seq);
+      else els.drawerBody.innerHTML = '<div class="center-tip">两侧都没有这个文件的内容。</div>';
     } catch (err) {
       console.error(err);
       els.drawerBody.innerHTML = '<div class="center-tip">读取失败：' + esc(err.message) + '</div>';
